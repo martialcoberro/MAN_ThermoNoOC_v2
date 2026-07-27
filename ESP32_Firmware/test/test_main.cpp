@@ -44,7 +44,7 @@ void loop_wifi_communication();
 #define ENABLE_I2C_SCANNER_TEST 0
 #define ENABLE_LED_ARRAY_TEST 0
 #define ENABLE_PUMPS_LOGIC_TEST 0
-#define ENABLE_ITO_GLASS_TEST 1
+#define ENABLE_ITO_GLASS_TEST 0
 #define ENABLE_WIFI_COMMUNICATION_TEST 0
 
 /**
