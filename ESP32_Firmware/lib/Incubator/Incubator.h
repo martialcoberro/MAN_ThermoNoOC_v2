@@ -26,21 +26,39 @@ private:
     static const int ITO_RES_BIT = 8;
     static const int ITO_PWM_CH = 5;
 
-    // PID gains — tuned for dual-crystal load (2× thermal mass, same actuator)
-    static constexpr float ITO_KP             = 8.0f;
-    static constexpr float ITO_KI             = 0.1f;
+    // PID gains — conservative starting values for a slow ambient thermal system
+    // with a fast, low-thermal-mass ITO actuator.
+    static constexpr float ITO_KP             = 3.0f;
+    static constexpr float ITO_KI             = 0.05f;
     static constexpr float ITO_KD             = 2.0f;
     static constexpr float ITO_INTEGRAL_LIMIT = 40.0f;  // anti-windup clamp
     static constexpr float ITO_DERIV_ALPHA    = 0.1f;   // low-pass for noisy sensor
 
-    // Hard PWM output cap — limits duty cycle to 55 % (140/255) for 60 Ω glass.
-    static const uint8_t ITO_PWM_MAX = 140;  // 55 %
+    // Hard PWM output cap. The glass reaches dangerous temperatures at duty
+    // cycles as low as ~16 % for a SINGLE ~70 ohm glass (see test_ito_glass.cpp).
+    // Both glasses are wired in PARALLEL to this same PWM output (see README),
+    // which roughly HALVES total resistance and therefore roughly DOUBLES the
+    // power drawn at any given duty cycle vs. a single glass. This cap is set
+    // well under half of the original single-glass limit for that reason.
+    // Re-tune upward only after measuring real current draw on the bench —
+    // never raise it just because heating "feels slow".
+    static const uint8_t ITO_PWM_MAX = 15;  // ~5.9 %
 
-    // Bang-bang threshold: if error exceeds this, bypass PID and go full power.
+    // Forced cooling cycle — hard backstop against runaway glass temperature /
+    // sustained overcurrent, independent of whatever the PID or bang-bang logic
+    // below computes. After ITO_MAX_ON_MS of cumulative on-time, the glass is
+    // forced off for ITO_MIN_OFF_MS no matter what.
+    static const uint32_t ITO_MAX_ON_MS  = 5000;  // ms of cumulative on-time before forced cooling
+    static const uint32_t ITO_MIN_OFF_MS = 3000;  // ms of forced off time
+
+    enum class ITOPhase : uint8_t { HEATING, FORCED_COOL };
+
+    // Bang-bang threshold: if error exceeds this, bypass PID and go full power
+    // (still subject to ITO_PWM_MAX and the forced-cooling backstop above).
     static constexpr float ITO_BANGBANG_THRESHOLD = 2.0f;  // °C
 
-    // Max setpoint change rate (°C/s) — faster ramp for dual-crystal configuration
-    static constexpr float ITO_RAMP_RATE_CS = 2.0f;
+    // Max setpoint change rate (°C/s) — limits power ramp to protect ITO glass
+    static constexpr float ITO_RAMP_RATE_CS = 0.5f;
 
     // LTR390 sensitivity factors for Gain=18x, Resolution=20-bit
     static constexpr float LTR390_SENSITIVITY = 2300.0f;
@@ -67,6 +85,11 @@ private:
     float         _filteredDeriv;
     float         _rampedTarget;
     unsigned long _lastHeaterMs;
+
+    // Forced cooling cycle state
+    ITOPhase      _itoPhase;
+    unsigned long _itoPhaseStartMs;
+    unsigned long _itoOnAccumMs;
 
     void select_Sensor_Bus(uint8_t muxChannel);
     void read_SHT35_Sensors();

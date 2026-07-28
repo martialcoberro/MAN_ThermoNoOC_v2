@@ -11,7 +11,8 @@ Incubator::Incubator()
       co2Percent(0.0f),
       targetTemperature(20.0f),
       _integral(0.0f), _prevError(0.0f), _filteredDeriv(0.0f),
-      _rampedTarget(20.0f), _lastHeaterMs(0) {}
+      _rampedTarget(20.0f), _lastHeaterMs(0),
+      _itoPhase(ITOPhase::HEATING), _itoPhaseStartMs(0), _itoOnAccumMs(0) {}
 
 // ---------------------------------------------------------------------------
 // Private helpers
@@ -124,6 +125,9 @@ void Incubator::begin()
     _prevError = 0.0f;
     _filteredDeriv = 0.0f;
     _lastHeaterMs = millis();
+    _itoPhase = ITOPhase::HEATING;
+    _itoPhaseStartMs = millis();
+    _itoOnAccumMs = 0;
 
     select_Sensor_Bus(MUX_CH_TEMP1);
     delay(50); // SHT35 power-on stabilisation (datasheet min: 1 ms; 50 ms for safety margin)
@@ -176,6 +180,23 @@ void Incubator::update_Heater_PWM()
     if (dt <= 0.0f || dt > 2.0f)
         dt = 0.1f;
 
+    // Forced cooling cycle — hard backstop, independent of PID/bang-bang output.
+    // If the glass has been on for ITO_MAX_ON_MS, force it off for ITO_MIN_OFF_MS
+    // regardless of what the control logic below would otherwise compute.
+    if (_itoPhase == ITOPhase::FORCED_COOL)
+    {
+        if (now - _itoPhaseStartMs >= ITO_MIN_OFF_MS)
+        {
+            _itoPhase = ITOPhase::HEATING;
+            _itoOnAccumMs = 0;
+        }
+        else
+        {
+            set_ITO_Power(0);
+            return;
+        }
+    }
+
     // Ramp the active setpoint — the primary ITO glass protection:
     // a sudden large target change is fed in gradually instead of all at once.
     float step = ITO_RAMP_RATE_CS * dt;
@@ -219,4 +240,15 @@ void Incubator::update_Heater_PWM()
     }
 
     set_ITO_Power(pwm);
+
+    if (pwm > 0)
+    {
+        _itoOnAccumMs += (unsigned long)(dt * 1000.0f);
+        if (_itoOnAccumMs >= ITO_MAX_ON_MS)
+        {
+            _itoPhase = ITOPhase::FORCED_COOL;
+            _itoPhaseStartMs = now;
+            set_ITO_Power(0);
+        }
+    }
 }
