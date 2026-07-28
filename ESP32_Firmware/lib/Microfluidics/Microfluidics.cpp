@@ -331,7 +331,6 @@ void Microfluidics::apply_Circuit_Pulsed(int circuitIdx)
 
 void Microfluidics::begin()
 {
-    Wire.begin(I2C_SDA, I2C_SCL);
     for (int i = 0; i < NUM_PUMPS; i++)
         init_Single_Pump(i);
     for (int i = 0; i < NUM_SENSORS; i++)

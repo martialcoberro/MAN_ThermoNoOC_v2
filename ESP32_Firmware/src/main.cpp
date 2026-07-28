@@ -8,6 +8,7 @@
  */
 
 #include <Arduino.h>
+#include <esp_system.h>
 #include "WiFiManager.h"
 #include "Control.h"
 #include "Incubator.h"
@@ -58,6 +59,7 @@ void on_WebSocket_Event(uint8_t clientNum, WStype_t type, uint8_t *payload, size
         return;
 
     String msg = String((char *)payload);
+    Serial.print("[WS RX] '"); Serial.print(msg); Serial.println("'");
 
     // --- Temperature setpoint ---
     // Expected format: "SET_TEMP:37.5"
@@ -131,21 +133,20 @@ void on_WebSocket_Event(uint8_t clientNum, WStype_t type, uint8_t *payload, size
 // ---------------------------------------------------------------------------
 String build_Telemetry_JSON()
 {
-    String json = "{";
-    json += "\"temp1\":" + String(incubator.temp1, 2) + ",";
-    json += "\"hum1\":" + String(incubator.hum1, 1) + ",";
-    json += "\"temp2\":" + String(incubator.temp2, 2) + ",";
-    json += "\"hum2\":" + String(incubator.hum2, 1) + ",";
-    json += "\"uvIndex\":" + String(incubator.uvIndex, 3) + ",";
-    json += "\"uvW\":" + String(incubator.uvIrradiance, 4) + ",";
-    json += "\"co2\":" + String(incubator.co2Percent, 4) + ",";
-    // Flow/temp cached by the PID tick — avoids a redundant I2C read here
-    json += "\"flow1\":" + String(fluidics.get_Last_Flow_Reading(1), 1) + ",";
-    json += "\"flow2\":" + String(fluidics.get_Last_Flow_Reading(2), 1) + ",";
-    json += "\"fluidTemp1\":" + String(fluidics.get_Last_Temp_Reading(1), 1) + ",";
-    json += "\"fluidTemp2\":" + String(fluidics.get_Last_Temp_Reading(2), 1);
-    json += "}";
-    return json;
+    static char buf[384];   // static: reused every call, no repeated malloc/free
+    snprintf(buf, sizeof(buf),
+        "{\"incClosed\":%s,\"microClosed\":%s,"
+        "\"temp1\":%.2f,\"hum1\":%.1f,\"temp2\":%.2f,\"hum2\":%.1f,"
+        "\"uvIndex\":%.3f,\"uvW\":%.4f,\"co2\":%.4f,"
+        "\"flow1\":%.1f,\"flow2\":%.1f,"
+        "\"fluidTemp1\":%.1f,\"fluidTemp2\":%.1f}",
+        is_Incubator_Closed ? "true" : "false",
+        is_Micro_Closed ? "true" : "false",
+        incubator.temp1, incubator.hum1, incubator.temp2, incubator.hum2,
+        incubator.uvIndex, incubator.uvIrradiance, incubator.co2Percent,
+        fluidics.get_Last_Flow_Reading(1), fluidics.get_Last_Flow_Reading(2),
+        fluidics.get_Last_Temp_Reading(1), fluidics.get_Last_Temp_Reading(2));
+    return String(buf);   // one single allocation, instead of ~11 growing reallocations
 }
 
 // ---------------------------------------------------------------------------
@@ -154,6 +155,20 @@ String build_Telemetry_JSON()
 void setup()
 {
     Serial.begin(115200);
+    delay(200);
+    Serial.print("[Boot] Reset reason: ");
+    switch (esp_reset_reason())
+    {
+        case ESP_RST_POWERON:  Serial.println("Power-on"); break;
+        case ESP_RST_EXT:      Serial.println("External reset pin"); break;
+        case ESP_RST_SW:       Serial.println("Software reset"); break;
+        case ESP_RST_PANIC:    Serial.println("PANIC / crash"); break;
+        case ESP_RST_INT_WDT:  Serial.println("Interrupt watchdog"); break;
+        case ESP_RST_TASK_WDT: Serial.println("Task watchdog (loop() blocked too long)"); break;
+        case ESP_RST_WDT:      Serial.println("Other watchdog"); break;
+        case ESP_RST_BROWNOUT: Serial.println("Brownout (power supply dip)"); break;
+        default:                Serial.println("Other"); break;
+    }
 
     wifi.begin(AP_IP, AP_GW, AP_SN);
     wifi.server().onEvent(on_WebSocket_Event);
@@ -190,5 +205,7 @@ void loop()
     {
         lastTelemetryMs = now;
         wifi.broadcast(build_Telemetry_JSON());
+        Serial.print("[Heap] free=");
+        Serial.println(ESP.getFreeHeap());
     }
 }

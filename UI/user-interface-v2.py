@@ -101,8 +101,10 @@ class WSClient:
         if self._ws and self.connected:
             try:
                 self._ws.send(msg)
-            except Exception:
-                pass
+            except Exception as e:
+                print(f"[WSClient] send failed for {msg!r}: {e}")
+        else:
+            print(f"[WSClient] dropped {msg!r} — not connected")
 
     # private ──────────────────────────────────────────────────────────────────
     def _run(self, url: str) -> None:
@@ -323,6 +325,7 @@ class App(ctk.CTk):
 
         # Safety toggle — must be Closed before sensors/actuators run
         self._incubator_closed = False
+        self._incubator_want = False
         self._incubator_btn = ctk.CTkButton(
             fr,
             text="Incubator Opened",
@@ -600,6 +603,7 @@ class App(ctk.CTk):
         btn_row.grid(row=1, column=0, padx=20, pady=(0, 14), sticky="w")
 
         self._micro_closed = False
+        self._micro_want = False
         self._micro_btn = ctk.CTkButton(
             btn_row,
             text="Microfluidics Opened",
@@ -835,14 +839,29 @@ class App(ctk.CTk):
 
     # ── incubator safety toggle ───────────────────────────────────────────────
     def _toggle_incubator(self) -> None:
-        self._incubator_closed = not self._incubator_closed
+        self._incubator_want = not self._incubator_want
+        self._incubator_closed = self._incubator_want
         if self._incubator_closed:
             btn_kw = dict(text="Incubator Closed", fg_color="#1e8449", hover_color="#196f3d")
         else:
             btn_kw = dict(text="Incubator Opened", fg_color="#c0392b", hover_color="#a93226")
         self._incubator_btn.configure(**btn_kw)
         self._update_send_btn()
-        self._ws.send(f"SET_INCUBATOR:{1 if self._incubator_closed else 0}")
+        self._ws.send(f"SET_INCUBATOR:{1 if self._incubator_want else 0}")
+
+    def _sync_incubator_btn(self) -> None:
+        if self._incubator_closed:
+            self._incubator_btn.configure(text="Incubator Closed", fg_color="#1e8449", hover_color="#196f3d")
+        else:
+            self._incubator_btn.configure(text="Incubator Opened", fg_color="#c0392b", hover_color="#a93226")
+        self._update_send_btn()
+
+    def _sync_micro_btn(self) -> None:
+        if self._micro_closed:
+            self._micro_btn.configure(text="Microfluidics Closed", fg_color="#1e8449", hover_color="#196f3d")
+        else:
+            self._micro_btn.configure(text="Microfluidics Opened", fg_color="#c0392b", hover_color="#a93226")
+        self._update_send_btn()
 
     # ── CSV logging ───────────────────────────────────────────────────────────
     def _open_csv(self) -> None:
@@ -900,6 +919,12 @@ class App(ctk.CTk):
             self._conn_lbl.configure(text="Connected")
             self._conn_btn.configure(text="Disconnect")
             self._open_csv()
+            # Re-assert current desired state on every (re)connect — covers the
+            # case where a toggle was clicked before the socket was fully open,
+            # or a ping-timeout silently dropped and reopened the connection.
+            self._ws.send(f"SET_INCUBATOR:{1 if self._incubator_closed else 0}")
+            self._ws.send(f"SET_MICRO:{1 if self._micro_closed else 0}")
+            self._ws.send(f"SET_TEMP:{self._temp_set_var.get():.1f}")
         else:
             if self._was_connecting:
                 self._dot.configure(text_color="#FF6B6B")
@@ -971,6 +996,20 @@ class App(ctk.CTk):
     # ── data ingestion (called from WS thread) ────────────────────────────────
     def _ingest(self, data: dict) -> None:
         with self._lock:
+            # Resync local interlock state from what the board actually reports —
+            # if a SET_INCUBATOR/SET_MICRO command never reached it (e.g. sent before
+            # the socket finished connecting), this brings the UI back in line instead
+            # of silently logging/displaying data the board never actually collected.
+            fw_inc = bool(data.get("incClosed", self._incubator_closed))
+            if fw_inc != self._incubator_closed:
+                self._incubator_closed = fw_inc
+                self.after(0, self._sync_incubator_btn)
+
+            fw_micro = bool(data.get("microClosed", self._micro_closed))
+            if fw_micro != self._micro_closed:
+                self._micro_closed = fw_micro
+                self.after(0, self._sync_micro_btn)
+
             self._elapsed += 1.0
             self._t.append(self._elapsed)
             self._bufs["temp1"].append(float(data.get("temp1", 0)))
@@ -985,7 +1024,6 @@ class App(ctk.CTk):
             self._bufs["fluidTemp1"].append(float(data.get("fluidTemp1", 0)))
             self._bufs["fluidTemp2"].append(float(data.get("fluidTemp2", 0)))
 
-        # redraw immediately so the plot reflects this sample without waiting for _tick
         self.after(0, self._redraw)
 
         with self._csv_lock:
@@ -1006,6 +1044,10 @@ class App(ctk.CTk):
     def _tick(self) -> None:
         if self._closing or not self.winfo_exists():
             return
+        if self._incubator_want != self._incubator_closed:
+            self._ws.send(f"SET_INCUBATOR:{1 if self._incubator_want else 0}")
+        if self._micro_want != self._micro_closed:
+            self._ws.send(f"SET_MICRO:{1 if self._micro_want else 0}")
         self._redraw()
         self.after(REDRAW_MS, self._tick)
 
@@ -1150,7 +1192,8 @@ class App(ctk.CTk):
 
     # ── microfluidics safety toggle ───────────────────────────────────────────
     def _toggle_micro(self) -> None:
-        self._micro_closed = not self._micro_closed
+        self._micro_want = not self._micro_want
+        self._micro_closed = self._micro_want
         if self._micro_closed:
             self._micro_btn.configure(
                 text="Microfluidics Closed",
@@ -1161,7 +1204,7 @@ class App(ctk.CTk):
                 text="Microfluidics Opened",
                 fg_color="#c0392b", hover_color="#a93226",
             )
-        self._ws.send(f"SET_MICRO:{1 if self._micro_closed else 0}")
+        self._ws.send(f"SET_MICRO:{1 if self._micro_want else 0}")
         self._update_send_btn()
 
     # ── pump mode toggle ──────────────────────────────────────────────────────
