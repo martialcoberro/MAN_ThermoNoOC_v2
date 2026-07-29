@@ -3,7 +3,7 @@
 
 #include <Arduino.h>
 #include <Wire.h>
-#include <SHTSensor.h>
+#include <Adafruit_SHT31.h>
 #include <Adafruit_LTR390.h>
 #include "Pinout.h"
 
@@ -72,8 +72,9 @@ private:
     };
     static constexpr unsigned long CO2_TIMEOUT_MS = 500;
 
-    SHTSensor _sht1;
-    SHTSensor _sht2;
+    Adafruit_SHT31 _sht1;
+    Adafruit_SHT31 _sht2;
+    static const uint8_t SHT35_ADDR = 0x45;   // confirmed via I2C scan — both units at 0x45
     Adafruit_LTR390 _ltr;
 
     CO2State _co2State;

@@ -1,8 +1,7 @@
 #include "Incubator.h"
 
 Incubator::Incubator()
-    : _sht1(SHTSensor::AUTO_DETECT),
-      _sht2(SHTSensor::AUTO_DETECT),
+    : _sht1(), _sht2(),
       _co2State(CO2State::IDLE),
       _co2CmdTime(0),
       temp1(0.0f), hum1(0.0f),
@@ -28,10 +27,12 @@ void Incubator::select_Sensor_Bus(uint8_t muxChannel)
 void Incubator::read_SHT35_Sensors()
 {
     select_Sensor_Bus(MUX_CH_TEMP1);
-    if (_sht1.readSample())
+    float t1 = _sht1.readTemperature();
+    float h1 = _sht1.readHumidity();
+    if (!isnan(t1) && !isnan(h1))
     {
-        temp1 = _sht1.getTemperature();
-        hum1 = _sht1.getHumidity();
+        temp1 = t1;
+        hum1 = h1;
     }
     else
     {
@@ -40,10 +41,12 @@ void Incubator::read_SHT35_Sensors()
     }
 
     select_Sensor_Bus(MUX_CH_TEMP2);
-    if (_sht2.readSample())
+    float t2 = _sht2.readTemperature();
+    float h2 = _sht2.readHumidity();
+    if (!isnan(t2) && !isnan(h2))
     {
-        temp2 = _sht2.getTemperature();
-        hum2 = _sht2.getHumidity();
+        temp2 = t2;
+        hum2 = h2;
     }
     else
     {
@@ -131,14 +134,14 @@ void Incubator::begin()
 
     select_Sensor_Bus(MUX_CH_TEMP1);
     delay(50); // SHT35 power-on stabilisation (datasheet min: 1 ms; 50 ms for safety margin)
-    if (!_sht1.init())
+    if (!_sht1.begin(SHT35_ADDR))
         Serial.println("[Incubator] ERROR: SHT35 #1 not found");
     else
         Serial.println("[Incubator] SHT35 #1 OK");
 
     select_Sensor_Bus(MUX_CH_TEMP2);
     delay(50);
-    if (!_sht2.init())
+    if (!_sht2.begin(SHT35_ADDR))
         Serial.println("[Incubator] ERROR: SHT35 #2 not found");
     else
         Serial.println("[Incubator] SHT35 #2 OK");
