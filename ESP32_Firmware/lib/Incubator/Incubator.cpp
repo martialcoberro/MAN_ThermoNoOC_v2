@@ -2,6 +2,7 @@
 
 Incubator::Incubator()
     : _sht1(), _sht2(),
+      _ltrPresent(false),
       _co2State(CO2State::IDLE),
       _co2CmdTime(0),
       temp1(0.0f), hum1(0.0f),
@@ -57,6 +58,8 @@ void Incubator::read_SHT35_Sensors()
 
 void Incubator::read_UV_Sensor()
 {
+    if (!_ltrPresent) return;   // sensor physically removed — never touch this mux channel
+
     select_Sensor_Bus(MUX_CH_UV);
     if (_ltr.newDataAvailable())
     {
@@ -147,9 +150,10 @@ void Incubator::begin()
         Serial.println("[Incubator] SHT35 #2 OK");
 
     select_Sensor_Bus(MUX_CH_UV);
-    if (!_ltr.begin())
+    _ltrPresent = _ltr.begin();
+    if (!_ltrPresent)
     {
-        Serial.println("[Incubator] ERROR: LTR390 not found");
+        Serial.println("[Incubator] LTR390 not connected — UV sensing disabled");
     }
     else
     {
@@ -216,19 +220,16 @@ void Incubator::update_Heater_PWM()
     uint8_t pwm;
     if (error > ITO_BANGBANG_THRESHOLD)
     {
-        // More than 2 °C below target: full power, freeze PID state to avoid windup
         _prevError = error;
         pwm = ITO_PWM_MAX;
     }
     else if (error <= -ITO_BANGBANG_THRESHOLD)
     {
-        // More than 2 °C above target: cut power, freeze PID state
         _prevError = error;
         pwm = 0;
     }
     else
     {
-        // Fine-control band (−2 °C < error ≤ 2 °C): PID
         _integral += error * dt;
         _integral = constrain(_integral, -ITO_INTEGRAL_LIMIT, ITO_INTEGRAL_LIMIT);
 
@@ -237,7 +238,6 @@ void Incubator::update_Heater_PWM()
         _prevError = error;
 
         float output = ITO_KP * error + ITO_KI * _integral + ITO_KD * _filteredDeriv;
-        // Keep a minimum of 10 when slightly above target to avoid thermal shock on the glass
         int minPwm = (error < 0.0f) ? 10 : 0;
         pwm = (uint8_t)constrain((int)output, minPwm, ITO_PWM_MAX);
     }

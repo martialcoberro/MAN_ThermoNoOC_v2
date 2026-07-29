@@ -11,9 +11,9 @@
  * @class Incubator
  * @brief Manages the biological incubation environment.
  *
- * Single responsibility: dual SHT35 (temp/humidity), LTR390 (UV index),
- * T6615 (CO2 via UART), and ITO glass heater PWM.
- * No pump, LED, fan, or WiFi logic.
+ * Single responsibility: dual SHT35 (temp/humidity), LTR390 (UV index,
+ * optional — physically absent on current hardware revision), T6615
+ * (CO2 via UART), and ITO glass heater PWM. No pump, LED, fan, or WiFi logic.
  *
  * CO2 reading is non-blocking: a two-state machine sends the command on one
  * loop tick and parses the response on a subsequent tick, with timeout handling.
@@ -72,10 +72,12 @@ private:
     };
     static constexpr unsigned long CO2_TIMEOUT_MS = 500;
 
+    static const uint8_t SHT35_ADDR = 0x45;   // confirmed via I2C scan — both units at 0x45
+
     Adafruit_SHT31 _sht1;
     Adafruit_SHT31 _sht2;
-    static const uint8_t SHT35_ADDR = 0x45;   // confirmed via I2C scan — both units at 0x45
     Adafruit_LTR390 _ltr;
+    bool _ltrPresent;   // false on current hardware — sensor removed, never polled if false
 
     CO2State _co2State;
     unsigned long _co2CmdTime;
@@ -101,8 +103,8 @@ public:
     // --- Live sensor readings (populated by read_All_Sensors()) ---
     float temp1, hum1;  // SHT35 #1 — temperature (°C) and humidity (%RH)
     float temp2, hum2;  // SHT35 #2
-    float uvIndex;      // LTR390 UV Index (0-11+)
-    float uvIrradiance; // LTR390 irradiance (W/m²)
+    float uvIndex;      // LTR390 UV Index (0-11+) — stays 0 if sensor not present
+    float uvIrradiance; // LTR390 irradiance (W/m²) — stays 0 if sensor not present
     float co2Percent;   // T6615 CO₂ concentration (0-20 %)
 
     // --- Setpoint (written by command parser in main.cpp) ---
@@ -114,8 +116,9 @@ public:
     void begin();
 
     /**
-     * Non-blocking sensor poll. Reads SHT35 and LTR390 directly; advances the
-     * CO2 state machine (send command OR parse response). Call every loop().
+     * Non-blocking sensor poll. Reads SHT35 directly; reads LTR390 only if
+     * it was detected at begin(); advances the CO2 state machine (send
+     * command OR parse response). Call every loop().
      */
     void read_All_Sensors();
 
