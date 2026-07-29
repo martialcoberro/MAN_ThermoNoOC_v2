@@ -243,6 +243,8 @@ void Incubator::update_Heater_PWM()
     }
 
     set_ITO_Power(pwm);
+    Serial.printf("[ITO] target=%.1f ramped=%.1f avg=%.1f error=%.1f pwm=%d\n",
+                  targetTemperature, _rampedTarget, avgTemp, error, pwm);
 
     if (pwm > 0)
     {
