@@ -410,7 +410,11 @@ float Microfluidics::read_Flow_Rate(int sensorNum)
     int idx = sensorNum - 1;
     select_Mux_Bus(FLOW_MUX_CH[idx]);
     // Request 6 bytes: flow (2 + CRC) + temperature (2 + CRC)
+    unsigned long t0 = micros();
     Wire.requestFrom(FLOW_I2C_ADDR, (uint8_t)6);
+    unsigned long dt = micros() - t0;
+    if (dt > 5000)  // flag anything over 5 ms — a healthy read should be well under 1 ms
+        Serial.printf("[Flow] sensor %d requestFrom took %lu us\n", sensorNum, dt);
     if (Wire.available() >= 6)
     {
         int16_t flowRaw = (int16_t)((Wire.read() << 8) | Wire.read());
