@@ -42,7 +42,7 @@ private:
     // well under half of the original single-glass limit for that reason.
     // Re-tune upward only after measuring real current draw on the bench —
     // never raise it just because heating "feels slow".
-    static const uint8_t ITO_PWM_MAX = 15;  // ~5.9 %
+    static const uint8_t ITO_PWM_MAX = 25;  // ~9,8 %
 
     // Forced cooling cycle — hard backstop against runaway glass temperature /
     // sustained overcurrent, independent of whatever the PID or bang-bang logic
