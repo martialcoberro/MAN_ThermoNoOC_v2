@@ -28,9 +28,9 @@ void Incubator::select_Sensor_Bus(uint8_t muxChannel)
 void Incubator::read_SHT35_Sensors()
 {
     select_Sensor_Bus(MUX_CH_TEMP1);
-    float t1 = _sht1.readTemperature();
-    float h1 = _sht1.readHumidity();
-    if (!isnan(t1) && !isnan(h1))
+    float t1, h1;
+    bool ok1 = _sht1.readBoth(&t1, &h1);
+    if (ok1 && !isnan(t1) && !isnan(h1))
     {
         temp1 = t1;
         hum1 = h1;
@@ -42,9 +42,9 @@ void Incubator::read_SHT35_Sensors()
     }
 
     select_Sensor_Bus(MUX_CH_TEMP2);
-    float t2 = _sht2.readTemperature();
-    float h2 = _sht2.readHumidity();
-    if (!isnan(t2) && !isnan(h2))
+    float t2, h2;
+    bool ok2 = _sht2.readBoth(&t2, &h2);
+    if (ok2 && !isnan(t2) && !isnan(h2))
     {
         temp2 = t2;
         hum2 = h2;

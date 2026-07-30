@@ -191,7 +191,17 @@ void loop()
     // 3. Incubator gate: environmental sensors and ITO heater only when lid is closed.
     if (is_Incubator_Closed)
     {
-        incubator.read_All_Sensors();
+        // Sensors are throttled — the SHT35/LTR390 I2C transactions block for tens
+        // of ms; polling every loop() tick starves wifi.loop() and eventually
+        // drops the WebSocket connection. PID still runs every tick for smooth
+        // control — it just reuses the last cached reading between polls.
+        static unsigned long lastSensorPollMs = 0;
+        unsigned long now = millis();
+        if (now - lastSensorPollMs >= 300)
+        {
+            lastSensorPollMs = now;
+            incubator.read_All_Sensors();
+        }
         incubator.update_Heater_PWM();
     }
 
