@@ -75,7 +75,7 @@ private:
     // Priming mode: ~305 Hz + 150 Vpp (hardware ceiling at GAIN=3)
     // 300 / 7.8125 = 38.4 → rounded to 39 → 39 × 7.8125 ≈ 305 Hz
     static const uint8_t PRIMING_FREQ_BYTE = 39;
-    static const uint8_t PRIMING_VOLT_BYTE = 255; // 150 Vpp at GAIN=3 — hardware ceiling
+    static const uint8_t PRIMING_VOLT_BYTE = 220; // pulled back from the 255 hardware ceiling 
 
     // ---- Per-circuit state ----
     bool _primingActive[NUM_CIRCUITS]; // true while priming mode is active for that circuit
