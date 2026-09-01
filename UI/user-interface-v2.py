@@ -798,14 +798,6 @@ class App(ctk.CTk):
             )
             priming_btn.pack(pady=(8, 2))
             self._priming_btns.append(priming_btn)
-
-            ctk.CTkLabel(
-                pump_card,
-                text="Under development, do not use",
-                font=ctk.CTkFont(size=10),
-                text_color=("gray55", "gray55"),
-            ).pack(pady=(0, 12))
-
         return fr
 
     # ── card factory ──────────────────────────────────────────────────────────
